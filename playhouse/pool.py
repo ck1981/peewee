@@ -61,6 +61,7 @@ Execution context examples (using above `db` instance):
 import heapq
 import logging
 import time
+import threading
 
 from peewee import MySQLDatabase
 from peewee import PostgresqlDatabase
@@ -69,6 +70,7 @@ logger = logging.getLogger('peewee.pool')
 
 
 class PooledDatabase(object):
+
     def __init__(self, database, max_connections=20, stale_timeout=None,
                  **kwargs):
         self.max_connections = max_connections
@@ -77,7 +79,7 @@ class PooledDatabase(object):
         self._in_use = {}
         self._closed = set()
         self.conn_key = id
-
+        # self.pool_semaphore = threading.BoundedSemaphore(max_connections)
         super(PooledDatabase, self).__init__(database, **kwargs)
 
     def _connect(self, *args, **kwargs):
@@ -120,6 +122,7 @@ class PooledDatabase(object):
             ts = time.time()
             key = self.conn_key(conn)
             logger.debug('Created new connection %s.', key)
+            # self.pool_semaphore.acquire()
 
         self._in_use[key] = ts
         return conn
@@ -144,6 +147,7 @@ class PooledDatabase(object):
             else:
                 logger.debug('Returning %s to pool.', key)
                 heapq.heappush(self._connections, (ts, conn))
+        # self.pool_semaphore.release()
 
     def manual_close(self):
         """
