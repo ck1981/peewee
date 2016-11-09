@@ -17,6 +17,7 @@
 #    '
 
 import datetime
+import time
 import decimal
 import hashlib
 import logging
@@ -36,6 +37,9 @@ except ImportError:
 from copy import deepcopy
 from functools import wraps
 from inspect import isclass
+
+_time = time.time
+_sleep = time.sleep
 
 __version__ = '2.8.0'
 __all__ = [
@@ -3259,6 +3263,8 @@ class InternalError(DatabaseError): pass
 class NotSupportedError(DatabaseError): pass
 class OperationalError(DatabaseError): pass
 class ProgrammingError(DatabaseError): pass
+class PoolMaxConnectionsError(DatabaseError): pass
+class PoolConnectionWaitTimeoutError(DatabaseError): pass
 
 
 class ExceptionWrapper(object):
@@ -3937,15 +3943,27 @@ class ExecutionContext(_callable_context_manager):
         self.connection = None
 
     def __enter__(self):
-        with self.database._conn_lock:
-            self.database.push_execution_context(self)
-            self.connection = self.database._connect(
-                self.database.database,
-                **self.database.connect_kwargs)
-            if self.with_transaction:
-                self.txn = self.database.transaction()
-                self.txn.__enter__()
-        return self
+        endtime = None
+        delay = 0.0005
+        if hasattr(self.database, '_pool_conn_timeout'):
+            endtime = _time() + self.database._pool_conn_timeout
+        while True:
+            try:
+                with self.database._conn_lock:
+                    self.database.push_execution_context(self)
+                    self.connection = self.database._connect(
+                        self.database.database,
+                        **self.database.connect_kwargs)
+                    if self.with_transaction:
+                        self.txn = self.database.transaction()
+                        self.txn.__enter__()
+                return self
+            except PoolMaxConnectionsError:
+                remaining = endtime - _time()
+                if remaining <= 0:
+                    raise PoolConnectionWaitTimeoutError("Connection timeout")
+                delay = min(delay * 2, remaining, .05)
+                _sleep(delay)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         with self.database._conn_lock:

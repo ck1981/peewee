@@ -61,10 +61,10 @@ Execution context examples (using above `db` instance):
 import heapq
 import logging
 import time
-import threading
 
 from peewee import MySQLDatabase
 from peewee import PostgresqlDatabase
+from peewee import PoolMaxConnectionsError
 
 logger = logging.getLogger('peewee.pool')
 
@@ -72,14 +72,14 @@ logger = logging.getLogger('peewee.pool')
 class PooledDatabase(object):
 
     def __init__(self, database, max_connections=20, stale_timeout=None,
-                 **kwargs):
+                 pool_conn_timeout=30, **kwargs):
         self.max_connections = max_connections
         self.stale_timeout = stale_timeout
+        self._pool_conn_timeout = pool_conn_timeout
         self._connections = []
         self._in_use = {}
         self._closed = set()
         self.conn_key = id
-        # self.pool_semaphore = threading.BoundedSemaphore(max_connections)
         super(PooledDatabase, self).__init__(database, **kwargs)
 
     def _connect(self, *args, **kwargs):
@@ -117,12 +117,11 @@ class PooledDatabase(object):
         if conn is None:
             if self.max_connections and (
                     len(self._in_use) >= self.max_connections):
-                raise ValueError('Exceeded maximum connections.')
+                raise PoolMaxConnectionsError('Exceeded maximum connections.')
             conn = super(PooledDatabase, self)._connect(*args, **kwargs)
             ts = time.time()
             key = self.conn_key(conn)
             logger.debug('Created new connection %s.', key)
-            # self.pool_semaphore.acquire()
 
         self._in_use[key] = ts
         return conn
@@ -147,7 +146,6 @@ class PooledDatabase(object):
             else:
                 logger.debug('Returning %s to pool.', key)
                 heapq.heappush(self._connections, (ts, conn))
-        # self.pool_semaphore.release()
 
     def manual_close(self):
         """
