@@ -64,7 +64,10 @@ import time
 
 from peewee import MySQLDatabase
 from peewee import PostgresqlDatabase
-from peewee import PoolMaxConnectionsError
+from peewee import PoolConnectionWaitTimeoutError
+
+_time = time.time
+_sleep = time.sleep
 
 logger = logging.getLogger('peewee.pool')
 
@@ -72,10 +75,10 @@ logger = logging.getLogger('peewee.pool')
 class PooledDatabase(object):
 
     def __init__(self, database, max_connections=20, stale_timeout=None,
-                 pool_conn_timeout=30, **kwargs):
+                 timeout=30, **kwargs):
         self.max_connections = max_connections
         self.stale_timeout = stale_timeout
-        self._pool_conn_timeout = pool_conn_timeout
+        self._timeout = timeout
         self._connections = []
         self._in_use = {}
         self._closed = set()
@@ -115,9 +118,7 @@ class PooledDatabase(object):
                     break
 
         if conn is None:
-            if self.max_connections and (
-                    len(self._in_use) >= self.max_connections):
-                raise PoolMaxConnectionsError('Exceeded maximum connections.')
+            self._wait_for_connection()
             conn = super(PooledDatabase, self)._connect(*args, **kwargs)
             ts = time.time()
             key = self.conn_key(conn)
@@ -125,6 +126,23 @@ class PooledDatabase(object):
 
         self._in_use[key] = ts
         return conn
+
+    def _wait_for_connection(self):
+        endtime = _time() + self._timeout
+        delay = 0.0005
+        while self._max_connections_exceeded():
+            self._conn_lock.release()
+            #  self._wait_conn.acquire()
+            remaining = endtime - _time()
+            if remaining <= 0.0:
+                raise PoolConnectionWaitTimeoutError("Timeout error.")
+            delay = min(delay * 2, remaining, .05)
+            _sleep(delay)
+            self._conn_lock.acquire()
+
+    def _max_connections_exceeded(self):
+        return self.max_connections and \
+               (len(self._in_use) >= self.max_connections)
 
     def _is_stale(self, timestamp):
         return (time.time() - timestamp) > self.stale_timeout
