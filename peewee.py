@@ -37,7 +37,6 @@ from copy import deepcopy
 from functools import wraps
 from inspect import isclass
 
-
 __version__ = '2.8.0'
 __all__ = [
     'BareField',
@@ -3260,7 +3259,6 @@ class InternalError(DatabaseError): pass
 class NotSupportedError(DatabaseError): pass
 class OperationalError(DatabaseError): pass
 class ProgrammingError(DatabaseError): pass
-class PoolMaxConnectionsError(DatabaseError): pass
 class PoolConnectionWaitTimeoutError(DatabaseError): pass
 
 

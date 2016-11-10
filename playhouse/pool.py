@@ -73,7 +73,6 @@ logger = logging.getLogger('peewee.pool')
 
 
 class PooledDatabase(object):
-
     def __init__(self, database, max_connections=20, stale_timeout=None,
                  timeout=30, **kwargs):
         self.max_connections = max_connections
@@ -83,6 +82,7 @@ class PooledDatabase(object):
         self._in_use = {}
         self._closed = set()
         self.conn_key = id
+
         super(PooledDatabase, self).__init__(database, **kwargs)
 
     def _connect(self, *args, **kwargs):
@@ -135,7 +135,10 @@ class PooledDatabase(object):
             #  self._wait_conn.acquire()
             remaining = endtime - _time()
             if remaining <= 0.0:
-                raise PoolConnectionWaitTimeoutError("Timeout error.")
+                raise PoolConnectionWaitTimeoutError(
+                    "Database pool timeout error."
+                    "Pool size: {},timeout: {} sec.".format(
+                        self.max_connections, self._timeout))
             delay = min(delay * 2, remaining, .05)
             _sleep(delay)
             self._conn_lock.acquire()
