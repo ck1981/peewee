@@ -132,7 +132,6 @@ class PooledDatabase(object):
         delay = 0.0005
         while self._max_connections_exceeded():
             self._conn_lock.release()
-            #  self._wait_conn.acquire()
             remaining = endtime - _time()
             if remaining <= 0.0:
                 raise PoolConnectionWaitTimeoutError(
